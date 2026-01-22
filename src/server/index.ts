@@ -1,6 +1,6 @@
 import ampq from "amqplib";
-import { publishJSON } from "../internal/pubsub/pubsub.js";
-import { ExchangePerilDirect, PauseKey } from "../internal/routing/routing.js";
+import { declareAndBind, publishJSON } from "../internal/pubsub/pubsub.js";
+import { ExchangePerilDirect, ExchangePerilTopic, GameLogSlug, PauseKey } from "../internal/routing/routing.js";
 import { getInput, printServerHelp } from "../internal/gamelogic/gamelogic.js";
 
 process.loadEnvFile();
@@ -14,6 +14,13 @@ async function main() {
     console.log(lp,"RMQ connected ")
 
     const channel = await conn.createConfirmChannel()
+    const [topic, Q] = await declareAndBind(
+        conn,
+        ExchangePerilTopic,
+        GameLogSlug,
+        `${GameLogSlug}.*`,
+        'durable'
+    );
 
     process.on('SIGINT', () => {
         console.log("Shutting down Peril server...");

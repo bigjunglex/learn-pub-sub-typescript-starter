@@ -1,7 +1,12 @@
 import ampq from "amqplib";
-import { clientWelcome } from "../internal/gamelogic/gamelogic.js";
-import { declareAndBind } from "../internal/pubsub/pubsub.js";
+import { clientWelcome, commandStatus, getInput, printClientHelp } from "../internal/gamelogic/gamelogic.js";
+import { declareAndBind, subscribeJSON } from "../internal/pubsub/pubsub.js";
 import { ExchangePerilDirect, PauseKey } from "../internal/routing/routing.js";
+import { GameState } from "../internal/gamelogic/gamestate.js";
+import { commandSpawn } from "../internal/gamelogic/spawn.js";
+import { commandMove } from "../internal/gamelogic/move.js";
+import { handlePause } from "../internal/gamelogic/pause.js";
+import { handlerPause } from "./handlers.js";
 process.loadEnvFile();
 
 
@@ -18,9 +23,47 @@ async function main() {
 
     await declareAndBind(conn, ExchangePerilDirect, qName, PauseKey, 'transient');
 
+    const gamestate = new GameState(username);
+    const handler = handlerPause(gamestate)
+    
+    await subscribeJSON(
+        conn,
+        ExchangePerilDirect,
+        qName,
+        PauseKey,
+        'transient',
+        handler
+    )
+
+    while (true) {
+        const w = await getInput('[NEXT ACTION]: ');
+        const cmd = w[0];
+
+        try {
+            if (cmd === 'spawn') {
+                commandSpawn(gamestate, w);
+            } else if (cmd === 'move') {
+                commandMove(gamestate, w);
+            } else if (cmd === 'status') {
+                commandStatus(gamestate);
+            } else if (cmd === 'help') {
+                printClientHelp();
+            } else if (cmd === 'spam') {
+                console.log('Spamming not allowed')
+            } else if (cmd === 'quit') {
+                console.log('[CLIENT]: closing... ')
+                process.exit(0)
+            } else {
+                throw new Error('Unknow command, refer to [help]')
+            }
+        } catch (e) {
+            console.error(e instanceof Error ? e.message : e)
+        }
+        continue
+    }
+
 }
 
 main().catch((err) => {
-    console.error("Fatal error:", err);
-    process.exit(1);
+    console.error("Fatal error:", err)
 });

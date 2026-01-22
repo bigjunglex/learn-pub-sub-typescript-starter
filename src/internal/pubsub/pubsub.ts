@@ -38,3 +38,25 @@ export async function declareAndBind(
 
     return [channel, Q]    
 }
+
+
+export async function subscribeJSON<T>(
+    conn: ChannelModel,
+    exchange: string,
+    queueName: string,
+    key: string,
+    queueType: SimpleQueueType,
+    handler: (data: T) => void,
+): Promise<void> {
+    const [channel, Q] = await declareAndBind(conn, exchange, queueName, key, queueType);
+    const consume = await channel
+        .consume(queueName, callback)
+        .catch(e => console.error('FAILED TO CONSUME'))
+
+    function callback(msg: ampq.ConsumeMessage | null) {
+        if (!msg) return;
+        const data = JSON.parse(String(msg.content));
+        handler(data);
+        channel.ack(msg);        
+    }
+}
