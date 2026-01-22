@@ -1,12 +1,12 @@
 import ampq from "amqplib";
 import { clientWelcome, commandStatus, getInput, printClientHelp } from "../internal/gamelogic/gamelogic.js";
-import { declareAndBind, subscribeJSON } from "../internal/pubsub/pubsub.js";
-import { ExchangePerilDirect, PauseKey } from "../internal/routing/routing.js";
+import { declareAndBind, publishJSON, subscribeJSON } from "../internal/pubsub/pubsub.js";
+import { ArmyMovesPrefix, ExchangePerilDirect, ExchangePerilTopic, PauseKey } from "../internal/routing/routing.js";
 import { GameState } from "../internal/gamelogic/gamestate.js";
 import { commandSpawn } from "../internal/gamelogic/spawn.js";
 import { commandMove } from "../internal/gamelogic/move.js";
 import { handlePause } from "../internal/gamelogic/pause.js";
-import { handlerPause } from "./handlers.js";
+import { handlerMove, handlerPause } from "./handlers.js";
 process.loadEnvFile();
 
 
@@ -16,23 +16,28 @@ const lp = '[CLIENT]: ';
 async function main() {
     console.log("Starting Peril client...");
     const conn = await ampq.connect(RMQ_URL);
+    const channel = await conn.createConfirmChannel();
     console.log(lp, "RMQ connected");
-    
     const username = await clientWelcome();
-    const qName = `${PauseKey}.${username}`
-
-    await declareAndBind(conn, ExchangePerilDirect, qName, PauseKey, 'transient');
 
     const gamestate = new GameState(username);
-    const handler = handlerPause(gamestate)
     
     await subscribeJSON(
         conn,
+        ExchangePerilTopic,
+        `${ArmyMovesPrefix}.${username}`,
+        `${ArmyMovesPrefix}.*`,
+        'transient',
+        handlerMove(gamestate)
+    )
+
+    await subscribeJSON(
+        conn,
         ExchangePerilDirect,
-        qName,
+        `${PauseKey}.${username}`,
         PauseKey,
         'transient',
-        handler
+        handlerPause(gamestate)
     )
 
     while (true) {
@@ -43,7 +48,14 @@ async function main() {
             if (cmd === 'spawn') {
                 commandSpawn(gamestate, w);
             } else if (cmd === 'move') {
-                commandMove(gamestate, w);
+                const move = commandMove(gamestate, w);
+                await publishJSON(
+                    channel,
+                    ExchangePerilTopic,
+                    `${ArmyMovesPrefix}.${username}`,
+                    move
+                )
+                console.log(lp, move.player, 'move published')
             } else if (cmd === 'status') {
                 commandStatus(gamestate);
             } else if (cmd === 'help') {
@@ -51,7 +63,7 @@ async function main() {
             } else if (cmd === 'spam') {
                 console.log('Spamming not allowed')
             } else if (cmd === 'quit') {
-                console.log('[CLIENT]: closing... ')
+                console.log(lp, 'closing... ')
                 process.exit(0)
             } else {
                 throw new Error('Unknow command, refer to [help]')
