@@ -1,5 +1,12 @@
 import type { Channel, ChannelModel, ConfirmChannel } from "amqplib";
 import ampq from "amqplib";
+import { DeadLetterKey, ExchangeDeadLetter } from "../routing/routing.js";
+
+export enum Acktype {
+    Ack,
+    NackRequeue,
+    NackDiscard
+}
 
 export function publishJSON<T>(
     ch: ConfirmChannel,
@@ -30,21 +37,16 @@ export async function declareAndBind(
         durable: queueType === 'durable',
         autoDelete: queueType === 'transient',
         exclusive: queueType === 'transient',
+        deadLetterExchange: ExchangeDeadLetter,
+        deadLetterRoutingKey: DeadLetterKey,
     };
-    
+
     const channel = await conn.createChannel();
     const Q = await channel.assertQueue(queueName, qOptions);
     await channel.bindQueue(queueName, exchange, key);
 
     return [channel, Q]    
 }
-
-export enum Acktype {
-    Ack,
-    NackRequeue,
-    NackDiscard
-}
-
 
 export async function subscribeJSON<T>(
     conn: ChannelModel,
