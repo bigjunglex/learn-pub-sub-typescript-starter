@@ -5,7 +5,6 @@ import { ArmyMovesPrefix, ExchangePerilDirect, ExchangePerilTopic, PauseKey } fr
 import { GameState } from "../internal/gamelogic/gamestate.js";
 import { commandSpawn } from "../internal/gamelogic/spawn.js";
 import { commandMove } from "../internal/gamelogic/move.js";
-import { handlePause } from "../internal/gamelogic/pause.js";
 import { handlerMove, handlerPause } from "./handlers.js";
 process.loadEnvFile();
 

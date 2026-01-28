@@ -39,6 +39,12 @@ export async function declareAndBind(
     return [channel, Q]    
 }
 
+export enum Acktype {
+    Ack,
+    NackRequeue,
+    NackDiscard
+}
+
 
 export async function subscribeJSON<T>(
     conn: ChannelModel,
@@ -46,7 +52,7 @@ export async function subscribeJSON<T>(
     queueName: string,
     key: string,
     queueType: SimpleQueueType,
-    handler: (data: T) => void,
+    handler: (data: T) => Acktype,
 ): Promise<void> {
     const [channel, Q] = await declareAndBind(conn, exchange, queueName, key, queueType);
     const consume = await channel
@@ -56,7 +62,18 @@ export async function subscribeJSON<T>(
     function callback(msg: ampq.ConsumeMessage | null) {
         if (!msg) return;
         const data = JSON.parse(String(msg.content));
-        handler(data);
-        channel.ack(msg);        
+        const ack = handler(data);
+        switch (ack) {
+            case Acktype.Ack:
+                channel.ack(msg);
+                break;
+            case Acktype.NackDiscard:
+                channel.nack(msg, false, false);
+                break;
+            case Acktype.NackRequeue:
+                channel.nack(msg, false, true);
+                break;
+            default: throw new Error('Undefined AckType');
+        }
     }
 }
