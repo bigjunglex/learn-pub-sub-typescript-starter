@@ -1,6 +1,6 @@
 import type { Channel, ChannelModel, ConfirmChannel } from "amqplib";
 import ampq from "amqplib";
-import { DeadLetterKey, ExchangeDeadLetter } from "../routing/routing.js";
+import { DeadLetterQue } from "../routing/routing.js";
 
 export enum Acktype {
     Ack,
@@ -37,8 +37,9 @@ export async function declareAndBind(
         durable: queueType === 'durable',
         autoDelete: queueType === 'transient',
         exclusive: queueType === 'transient',
-        deadLetterExchange: ExchangeDeadLetter,
-        deadLetterRoutingKey: DeadLetterKey,
+        arguments: {
+            'x-dead-letter-exchange': DeadLetterQue
+        }
     };
 
     const channel = await conn.createChannel();
@@ -54,7 +55,7 @@ export async function subscribeJSON<T>(
     queueName: string,
     key: string,
     queueType: SimpleQueueType,
-    handler: (data: T) => Acktype,
+    handler: (data: T, ch: Channel) => Promise<Acktype>|Acktype,
 ): Promise<void> {
     const [channel, Q] = await declareAndBind(conn, exchange, queueName, key, queueType);
     const consume = await channel
@@ -64,7 +65,7 @@ export async function subscribeJSON<T>(
     function callback(msg: ampq.ConsumeMessage | null) {
         if (!msg) return;
         const data = JSON.parse(String(msg.content));
-        const ack = handler(data);
+        const ack = handler(data, channel);
         switch (ack) {
             case Acktype.Ack:
                 channel.ack(msg);
@@ -75,7 +76,6 @@ export async function subscribeJSON<T>(
             case Acktype.NackRequeue:
                 channel.nack(msg, false, true);
                 break;
-            default: throw new Error('Undefined AckType');
         }
     }
 }

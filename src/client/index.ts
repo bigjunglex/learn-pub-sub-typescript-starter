@@ -1,11 +1,11 @@
 import ampq from "amqplib";
 import { clientWelcome, commandStatus, getInput, printClientHelp } from "../internal/gamelogic/gamelogic.js";
-import { declareAndBind, publishJSON, subscribeJSON } from "../internal/pubsub/pubsub.js";
-import { ArmyMovesPrefix, ExchangePerilDirect, ExchangePerilTopic, PauseKey } from "../internal/routing/routing.js";
+import { publishJSON, subscribeJSON } from "../internal/pubsub/pubsub.js";
+import { ArmyMovesPrefix, ExchangePerilDirect, ExchangePerilTopic, PauseKey, WarRecognitionsPrefix } from "../internal/routing/routing.js";
 import { GameState } from "../internal/gamelogic/gamestate.js";
 import { commandSpawn } from "../internal/gamelogic/spawn.js";
 import { commandMove } from "../internal/gamelogic/move.js";
-import { handlerMove, handlerPause } from "./handlers.js";
+import { handlerMove, handlerPause, handlerWar } from "./handlers.js";
 process.loadEnvFile();
 
 
@@ -27,7 +27,7 @@ async function main() {
         `${ArmyMovesPrefix}.${username}`,
         `${ArmyMovesPrefix}.*`,
         'transient',
-        handlerMove(gamestate)
+        handlerMove(gamestate, channel)
     )
 
     await subscribeJSON(
@@ -37,6 +37,15 @@ async function main() {
         PauseKey,
         'transient',
         handlerPause(gamestate)
+    )
+
+    await subscribeJSON(
+        conn,
+        ExchangePerilTopic,
+        WarRecognitionsPrefix,
+        `${WarRecognitionsPrefix}`,
+        'durable',
+        handlerWar(gamestate)
     )
 
     while (true) {
@@ -54,7 +63,6 @@ async function main() {
                     `${ArmyMovesPrefix}.${username}`,
                     move
                 )
-                console.log(lp, move.player, 'move published')
             } else if (cmd === 'status') {
                 commandStatus(gamestate);
             } else if (cmd === 'help') {
